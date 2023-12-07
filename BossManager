@@ -1,0 +1,75 @@
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /Fortnite.com/Characters }
+
+game_player := struct:
+    BossUI : ui_Zombieboss_bar
+    LichBossUI : Lich_health_bar
+   
+
+
+manager_game := class(creative_device):
+
+    @editable ZombieManager : Zombie_boss = Zombie_boss{}
+    @editable WeaponGranter : item_granter_device = item_granter_device{}
+    @editable ZombieBossTrigger : trigger_device = trigger_device{}  # Add a trigger device
+    @editable LichManager : Lich_boss_fight = Lich_boss_fight{}  # Add a reference to the Lich boss
+    @editable LichBossTrigger : trigger_device = trigger_device{}  # Add a trigger device
+    @editable LichBossIntroCinema : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieIntro : cinematic_sequence_device = cinematic_sequence_device{}
+
+
+   
+
+
+    OnBegin<override>()<suspends>:void=
+        
+        if (set GlobalData[GetSession()] = map{}){}
+
+        GetPlayspace().PlayerAddedEvent().Subscribe(OnPlayerJoinedServer)
+
+         # Subscribe to the trigger event
+        ZombieBossTrigger.TriggeredEvent.Subscribe(OnPlayerEnteredTrigger)
+        LichBossTrigger.TriggeredEvent.Subscribe(OnPlayerEnteredLichTrigger)
+        
+        
+        
+
+
+         # Initialize all existing players right away because some
+    # Spawner spawned events may have already fired
+        for (Player : GetPlayspace().GetPlayers()):
+            InitPlayer(Player)
+        # Decide when and how to start the game, Sleep here is just for testing
+
+    
+    # Every player must have a copy of the UI
+    InitPlayer(Player : player):void=
+        LichBossUI := Lich_health_bar{Player := Player}
+        BossUI := ui_Zombieboss_bar{Player := Player}
+        GamePlayer := game_player{BossUI := BossUI, LichBossUI := LichBossUI}
+       
+        if (Agent := agent[Player]) {WeaponGranter.GrantItem(Agent)}
+        
+        if (set GlobalData[GetSession()][Player] = GamePlayer) {}
+
+    OnPlayerJoinedServer(PlayerEntering : player):void=
+        InitPlayer(PlayerEntering)
+
+    # New function to handle the trigger event
+    OnPlayerEnteredTrigger(TriggeringAgent : ?agent):void=
+        # Start the boss fight when a player enters the trigger
+        
+        ZombieIntro.PlayOneShot()
+        
+        spawn{ZombieManager.StartBossFight()}
+
+    OnPlayerEnteredLichTrigger(TriggeringAgent : ?agent):void=
+        
+        LichBossIntroCinema.PlayOneShot()
+
+        spawn{LichManager.LichStartBossFight()}
+        
+       
+  
