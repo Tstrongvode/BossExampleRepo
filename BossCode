@@ -1,0 +1,136 @@
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /Fortnite.com/Game }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+using { /Fortnite.com/Characters }
+using { /Verse.org/Random }
+
+
+Zombie_boss := class(creative_device):
+    @editable ZombieBossBP : creative_prop = creative_prop{}
+    @editable MoveSpeed : float = 15.0
+
+    @editable PoisanCloud : attack_PoisanCloud = attack_PoisanCloud{}
+    @editable ZombieBossManipulator : prop_manipulator_device = prop_manipulator_device{}
+
+    # Cinematics
+    @editable ZombieBossAttack : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieBossIdle : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieBossWalk : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieBossAoe : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieBossDeath : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieBosshit : cinematic_sequence_device = cinematic_sequence_device{}
+    @editable ZombieIntro : cinematic_sequence_device = cinematic_sequence_device{}
+
+
+    # Audio
+    @editable AttackEffort : audio_player_device = audio_player_device{}
+    @editable BossMusic : audio_player_device = audio_player_device{}
+   
+
+    BOSS_TOTAL_HP : float = 10000.0
+    var BossCurrentHP<private> : float = 10000.0
+   
+    # This should be stored in a custom player and be adjustable
+    PLAYER_DAMAGE : float = 20.0
+  
+
+    OnBegin<override>()<suspends>:void=
+       
+        ZombieBossManipulator.DamagedEvent.Subscribe(OnBossDamaged)
+
+      
+
+    StartBossFight()<suspends>:void=
+        
+        BossMusic.Play()
+
+        # Show the bar for all players
+        for (GP : GamePlayers()):
+            spawn{GP.BossUI.Start()}
+
+
+             # These can be adjusted to make the fight more difficult, easier, or 
+        # for better gameplay
+        loop:
+            Sleep(0.3)
+            StopLoopingAnims()
+            StartMeleeAttack1()
+            Sleep(0.5)
+            StartSkyAttack()
+        
+    
+    StartIdle()<suspends>:void=
+        ZombieBossIdle.Play()
+        
+    StartMeleeAttack1()<suspends>:void=
+        StartLocation := ZombieBossBP.GetTransform().Translation
+        # Find the nearest player
+        Players := GetPlayspace().GetPlayers().ToPositionals()
+        if (Target := ZombieBossBP.GetTransform().GetClosestPositional(Players)?):
+            var TargetLocation : vector3 = Target.GetTransform().Translation
+            # Rotate toward player before moving
+            var NewRotation : rotation = ZombieBossBP.GetTransform().GetLookAtRotation(TargetLocation)
+            ZombieBossBP.MoveTo(ZombieBossBP.GetTransform().Translation, NewRotation, 0.3)
+
+            # Calculate how long it will take to move to the player using Miles Per Hour
+            MoveDistance := DistanceXY(StartLocation, TargetLocation)
+            DistanceCoveredPerSecond := 25.0 * MoveSpeed
+            var MoveTime: float = MoveDistance / DistanceCoveredPerSecond
+
+            if (MoveTime <= 0.0):
+                set MoveTime = 1.0
+
+            #Play the dash animation
+            ZombieBossWalk.Play()
+            ZombieBossBP.MoveTo(TargetLocation, NewRotation, MoveTime)
+            ZombieBossWalk.Stop()
+ 
+            
+            #  Get target's latest position
+            set TargetLocation = Target.GetTransform().Translation
+
+            # One more quick rotation to face the player
+            set NewRotation = ZombieBossBP.GetTransform().GetLookAtRotation(TargetLocation)
+            ZombieBossBP.MoveTo(ZombieBossBP.GetTransform().Translation, NewRotation, 0.3)
+            
+            # Play attack
+            AttackEffort.Play()
+            ZombieBossAttack.Play()
+            ZombieBossBP.MoveTo(TargetLocation, NewRotation, MoveTime)
+
+     
+
+    StartSkyAttack()<suspends>:void=
+        spawn{PoisanCloud.StartAttack(GetPlayspace().GetPlayers(), 45.0, 3.5, ZombieBossBP.GetTransform().Translation)}
+        AttackEffort.Play()
+        ZombieBossAoe.PlayOneShot().Await()
+
+            
+            
+    # Always remember to stop other animations when starting a new one
+    # Or they will both play at the same time and you may get unexpected results
+    StopLoopingAnims():void=
+        ZombieBossIdle.Stop()  
+        ZombieBossWalk.Stop()
+
+    # Update the progress bar for all players and/or end the game
+    OnBossDamaged(Agent : agent):void=
+        set BossCurrentHP -= PLAYER_DAMAGE
+        if (BossCurrentHP <= 0.0) { OnBossDefeated()}
+        else:
+            HPPercent := (BossCurrentHP / BOSS_TOTAL_HP) * 100.0
+            for (GP : GamePlayers()):
+                GP.BossUI.UpdateProgressBar(HPPercent)
+            ZombieBosshit .Play()
+
+  
+    OnBossDefeated():void=
+        for (GP : GamePlayers()):
+            GP.BossUI.Hide()
+            ZombieBossDeath.Play()
+        ZombieBossBP.Dispose()
+        
+    
+        
